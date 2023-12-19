@@ -13,15 +13,15 @@ import Foundation
 /// A Swift wrapper for the SyncTeX C API used for synchronizing input and output of TeX source files.
 ///
 /// The typical usage of this class is to create a new instance of this class and then call the corresponding query methods on the instance. 
-public class SyncTeXScanner {
+public final class SyncTeXScanner {
     /// The current working directory of the SyncTeX scanner.
     ///
     /// This value may be `nil`. If you want to reset this value, you can call the ``resetURL(file:directory:)`` method of this class.
-    private(set) var outputDirectory: URL?
+    public private(set) var outputDirectory: URL?
     /// The current document file output by the `TeX` engine has an extension of either `tex`, `dvi`, or `xdv`.
     ///
     /// If you want to reset this value, you can call the ``resetURL(file:directory:)`` method of this class.
-    private(set) var outputFile: URL
+    public private(set) var outputFile: URL
     private var scanner: synctex_scanner_p!
     private var isScannerAvailable: Bool {
         scanner != nil
