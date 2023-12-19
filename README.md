@@ -1,4 +1,4 @@
-# SyncTeX - SyncTeX Library for `iOS` Platform
+# synctex-iOS - SyncTeX Library for `iOS` Platform
 
 ## Introduction
 
@@ -37,7 +37,7 @@ All the provided public functions have detailed comments (in English), which can
 
 
 
-# SyncTeX——适用于 `iOS` 平台的 `SyncTeX` 库
+# synctex-iOS ——适用于 `iOS` 平台的 `SyncTeX` 库
 
 ## 简介
 
