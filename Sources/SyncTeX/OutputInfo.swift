@@ -1,5 +1,5 @@
 //
-//  File.swift
+//  OutputInfo.swift
 //  
 //
 //  Created by mengchao on 2023/7/19.
@@ -16,6 +16,7 @@ extension SyncTeXScanner {
     ///
     /// You can use this information to uniquely determine the corresponding location of the output file.
     public struct NodeDisplayInfo: CustomStringConvertible {
+        /// A textual representation of this instance.
         public var description: String {
             let mirror = Mirror(reflecting: self)
             var result = "---[NodeDisplayInfo]---\n"
@@ -31,18 +32,46 @@ extension SyncTeXScanner {
         public let line: Int
         /// The column in the source file where the query position is located.
         public let column: Int
-        
-        public let boxh: CGFloat
-        public let boxv: CGFloat
-        public let boxwidth: CGFloat
-        public let boxheight: CGFloat
-        public let boxd: CGFloat
-        
+        /// The horizontal location of node.
+        ///
+        /// The point is in the page coordinates.
         public let h: CGFloat
+        /// The vertical location of node.
+        ///
+        /// The point is in the page coordinates.
         public let v: CGFloat
+        /// The width of the node.
+        ///
+        /// The width is in the page coordinates.
         public let width: CGFloat
+        /// The height of the node.
+        ///
+        /// The height is in the page coordinates.
         public let height: CGFloat
+        /// The depth of the node.
+        ///
+        /// The value is not useful for node display.
         public let d: CGFloat
+        /// The horizontal location of the first box enclosing node.
+        ///
+        /// The value is in the page coordinates.
+        public let boxh: CGFloat
+        /// The vertical location of the first box enclosing node.
+        ///
+        /// The value is in the page coordinates.
+        public let boxv: CGFloat
+        /// The width of the first box enclosing node.
+        ///
+        /// The value is in the page coordinates.
+        public let boxwidth: CGFloat
+        /// The height of the first box enclosing node.
+        ///
+        /// The value is in the page coordinates.
+        public let boxheight: CGFloat
+        /// The depth of the first box enclosing node.
+        ///
+        /// The value is in the page coordinates.
+        public let boxd: CGFloat
         
         internal init(fileURL: URL, line: Int, column: Int, boxh: CGFloat, boxv: CGFloat, boxwidth: CGFloat, boxheight: CGFloat, boxd: CGFloat, h: CGFloat, v: CGFloat, width: CGFloat, height: CGFloat, d: CGFloat) {
             self.fileURL = fileURL
@@ -60,6 +89,7 @@ extension SyncTeXScanner {
             self.d = d
         }
     }
+    
     /// Source file information corresponding to a certain output display location.
     ///
     /// You can use this information to uniquely determine the corresponding location of the source file.

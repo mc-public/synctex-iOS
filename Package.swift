@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "SyncTeX",
-    platforms: [.iOS("16.0")],
+    platforms: [.iOS("13.0")],
     products: [
         .library(
             name: "SyncTeX",

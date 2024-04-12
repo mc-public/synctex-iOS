@@ -1,5 +1,5 @@
 //
-//  File.swift
+//  Scanner.swift
 //  
 //
 //  Created by mengchao on 2023/7/18.
@@ -12,41 +12,63 @@ import Foundation
 
 /// A Swift wrapper for the SyncTeX C API used for synchronizing input and output of TeX source files.
 ///
-/// The typical usage of this class is to create a new instance of this class and then call the corresponding query methods on the instance. 
+/// - Note: The class is thread safe.
+///
+/// The typical usage of this class is to create a new instance of this class and then call the corresponding query methods on the instance.
+@available(iOS 13.0, *)
 public final class SyncTeXScanner {
     /// The current working directory of the SyncTeX scanner.
     ///
     /// This value may be `nil`. If you want to reset this value, you can call the ``resetURL(file:directory:)`` method of this class.
-    public private(set) var outputDirectory: URL?
-    /// The current document file output by the `TeX` engine has an extension of either `tex`, `dvi`, or `xdv`.
+    public var outputDirectory: URL? {
+        get async {
+            await withUnsafeContinuation { (cont: UnsafeContinuation<URL?, Never>) -> Void in
+                queue.async {
+                    cont.resume(returning: self._outputDirectory)
+                }
+            }
+        }
+    }
+    
+    public private(set) var _outputDirectory: URL?
+    /// The current document file output by the `TeX` engine has an extension of either `pdf`, `dvi`, or `xdv`.
     ///
     /// If you want to reset this value, you can call the ``resetURL(file:directory:)`` method of this class.
-    public private(set) var outputFile: URL
+    public var outputFile: URL {
+        get async {
+            await withUnsafeContinuation { (cont: UnsafeContinuation<URL, Never>) -> Void in
+                queue.async {
+                    cont.resume(returning: self._outputFile)
+                }
+            }
+        }
+    }
+    public private(set) var _outputFile: URL
     private var scanner: synctex_scanner_p!
     private var isScannerAvailable: Bool {
         scanner != nil
     }
-    
+    private var queue: DispatchQueue = .init(label: "\(SyncTeXError.Type.self)_SerialQueue_\(UUID().uuidString)")
     
     /// Initialize a SyncTeX scanner instance.
     ///
     /// During the initialization process, attempts will be made to find the necessary dependencies for `SyncTeX`. If these files cannot be found or if an internal error occurs, the initialization method will throw an error. You can refer to the `SyncTeXError` enum in this class to see all the possible errors that can be thrown.
     ///
     /// - Parameters:
-    ///     - outputFile: The document file output by the `TeX` engine has an extension of either `tex`, `dvi`, or `xdv`.
+    ///     - outputFile: The document file output by the `TeX` engine has an extension of either `pdf`, `dvi`, or `xdv`.
     ///     - outputDirectory: The working directory of the `TeX` engine. This parameter can be empty. If specifying this value, the actual directory corresponding to it must contain a `SyncTeX` file with the same name as `outputFile`, with an extension of either `synctex.gz` or `synctex`. You can refer to the SyncTeXError enum in this class to see all the possible errors that can be thrown.
-    public init(outputFile: URL, outputDirectory: URL? = nil) throws {
-        self.outputDirectory = outputDirectory
-        self.outputFile = outputFile
-        try updateScanner()
+    public init(outputFile: URL, outputDirectory: URL? = nil) async throws {
+        self._outputDirectory = outputDirectory
+        self._outputFile = outputFile
+        try await self.updateScannerByAsync()
     }
     
     
     /// Reload the SyncTeX file and regenerate the tree.
     ///
     /// This will release the original tree and reload the `SyncTeX` file based on the relevant information of the current properties in this class, and generate a new tree. This method will be automatically called during initialization. You can refer to the ``SyncTeXError`` enum in this class to see all the possible errors that can be thrown.
-    public func updateNodeTree() throws {
-        try self.updateScanner()
+    public func updateNodeTree() async throws {
+        try await self.updateScannerByAsync()
     }
     
     /// Reset the working directory.
@@ -56,12 +78,37 @@ public final class SyncTeXScanner {
     /// You can refer to the `SyncTeXError` enum in this class to see all the possible errors that can be thrown.
     ///
     ///  - Parameters:
-    ///     - outputFile: The document file output by the `TeX` engine has an extension of either `tex`, `dvi`, or `xdv`.
+    ///     - outputFile: The document file output by the `TeX` engine has an extension of either `pdf`, `dvi`, or `xdv`.
     ///     - outputDirectory: The working directory of the `TeX` engine. This parameter can be empty. If specifying this value, the actual directory corresponding to it must contain a `SyncTeX` file with the same name as `outputFile`, with an extension of either `synctex.gz` or `synctex`.
-    public func resetURL(file outputFile: URL, directory outputDirectory: URL) throws {
-        self.outputFile = outputFile
-        self.outputDirectory = outputDirectory
-        try self.updateScanner()
+    public func resetURL(file outputFile: URL, directory outputDirectory: URL?) async throws {
+        try await withUnsafeThrowingContinuation { (cont: UnsafeContinuation<Void, any Error>) -> Void in
+            queue.async {
+                self._outputFile = outputFile
+                self._outputDirectory = outputDirectory
+                do {
+                    try self.updateScanner()
+                } catch {
+                    cont.resume(throwing: error)
+                    return
+                }
+                cont.resume()
+            }
+        }
+        
+    }
+    
+    private func updateScannerByAsync() async throws {
+        try await withUnsafeThrowingContinuation { (cont: UnsafeContinuation<Void, any Error>) -> Void in
+            queue.async {
+                do {
+                    try self.updateScanner()
+                } catch {
+                    cont.resume(throwing: error)
+                    return
+                }
+                cont.resume()
+            }
+        }
     }
     
     private func updateScanner() throws {
@@ -69,14 +116,14 @@ public final class SyncTeXScanner {
             synctex_scanner_free(self.scanner)
             self.scanner = nil
         }
-        if let outputDirectory = self.outputDirectory {
-            outputDirectory.withUnsafeFileSystemRepresentation { outputDirPointer in
-                self.outputFile.withUnsafeFileSystemRepresentation { outputFilePointer in
+        if let _outputDirectory = self._outputDirectory {
+            _outputDirectory.withUnsafeFileSystemRepresentation { outputDirPointer in
+                self._outputFile.withUnsafeFileSystemRepresentation { outputFilePointer in
                     self.scanner = synctex_scanner_new_with_output_file(outputFilePointer, outputDirPointer, 1)
                 }
             }
         } else {
-            self.outputFile.withUnsafeFileSystemRepresentation { outputFilePointer in
+            self._outputFile.withUnsafeFileSystemRepresentation { outputFilePointer in
                 self.scanner = synctex_scanner_new_with_output_file(outputFilePointer, nil, 1)
             }
         }
@@ -87,9 +134,11 @@ public final class SyncTeXScanner {
     
     
     deinit {
-        if self.isScannerAvailable {
-            synctex_scanner_free(self.scanner)
-            self.scanner = nil
+        let pointer = self.scanner
+        let queue = self.queue
+        self.scanner = nil
+        queue.async {
+            synctex_scanner_free(pointer)
         }
     }
     
@@ -105,48 +154,58 @@ public final class SyncTeXScanner {
     ///     - pageHint: The result closest to the page corresponding to this parameter will be placed at the first index in the output results. The default value is `0`.
     /// - Returns:
     ///     Return an Array representing all possible search results. If the Array is empty, it means that no results were found.
-    public func displayQuery(fileURL: URL, line: Int, column: Int, pageHint: Int = 0) -> [NodeDisplayInfo] {
-        synctex_scanner_reset_result(self.scanner)
-        defer {
-            synctex_scanner_reset_result(self.scanner)
-        }
-        let fileURL = fileURL.standardizedFileURL
-        var isFileNameFound = false
-        var inputNode = synctex_scanner_input(self.scanner)
-        var resultURL: URL?
-        var resultName: String = .init()
-        while (inputNode != nil) {
-            guard let name = synctex_scanner_get_name(self.scanner, synctex_node_tag(inputNode)), let nameString = String(cString: name, encoding: .utf8) else {
-                return []
+    public func displayQuery(fileURL: URL, line: Int, column: Int, pageHint: Int = 0) async -> [NodeDisplayInfo] {
+        return await withUnsafeContinuation { (cont: UnsafeContinuation<[NodeDisplayInfo], Never>) -> Void in
+            queue.async {
+                synctex_scanner_reset_result(self.scanner)
+                defer {
+                    synctex_scanner_reset_result(self.scanner)
+                }
+                let fileURL = fileURL.standardizedFileURL
+                var isFileNameFound = false
+                var inputNode = synctex_scanner_input(self.scanner)
+                var resultURL: URL?
+                var resultName: String = .init()
+                while (inputNode != nil) {
+                    guard let name = synctex_scanner_get_name(self.scanner, synctex_node_tag(inputNode)), let nameString = String(cString: name, encoding: .utf8) else {
+                        cont.resume(returning: [])
+                        return
+                    }
+                    resultName = nameString /// Maybe contains `/./`
+                    resultURL = URL(fileURLWithFileSystemRepresentation: name, isDirectory: false, relativeTo: nil)
+                        .standardizedFileURL
+                    if resultURL?.absoluteString == fileURL.absoluteString {
+                        isFileNameFound = true
+                        break
+                    }
+                    inputNode = synctex_node_sibling(inputNode)
+                }
+                guard isFileNameFound else {
+                    #if DEBUG
+                    print("[SyncTeXSanner] Cannot find file \(fileURL.absoluteString) in all input node.")
+                    #endif
+                    cont.resume(returning: [])
+                    return
+                }
+                let queryResultCount = synctex_display_query(self.scanner, resultName, Int32(line), Int32(column), Int32(pageHint))
+                guard queryResultCount > 0 else {
+                    cont.resume(returning: [])
+                    return
+                }
+                var node: synctex_node_p?
+                var nodeResult = [synctex_node_p]()
+                while(true) {
+                    node = synctex_scanner_next_result(self.scanner)
+                    if let node = node {
+                        nodeResult.append(node)
+                    } else {
+                        break
+                    }
+                }
+                cont.resume(returning: nodeResult.map { self.getDisplayInfo(for: $0, fileURL: fileURL, line: line, column: column) })
+                return
             }
-            resultName = nameString /// Maybe contains `/./`
-            resultURL = URL(fileURLWithFileSystemRepresentation: name, isDirectory: false, relativeTo: nil)
-                .standardizedFileURL
-            if resultURL?.absoluteString == fileURL.absoluteString {
-                isFileNameFound = true
-                break
-            }
-            inputNode = synctex_node_sibling(inputNode)
         }
-        guard isFileNameFound else {
-            print("[SyncTeXSanner] Cannot find file \(fileURL.absoluteString) in all input node.")
-            return []
-        }
-        let queryResultCount = synctex_display_query(self.scanner, resultName, Int32(line), Int32(column), Int32(pageHint))
-        guard queryResultCount > 0 else {
-            return []
-        }
-        var node: synctex_node_p?
-        var nodeResult = [synctex_node_p]()
-        while(true) {
-            node = synctex_scanner_next_result(self.scanner)
-            if let node = node {
-                nodeResult.append(node)
-            } else {
-                break
-            }
-        }
-        return nodeResult.map { getDisplayInfo(for: $0, fileURL: fileURL, line: line, column: column) }
     }
     
     
@@ -161,47 +220,57 @@ public final class SyncTeXScanner {
     ///     - pageHint: The result closest to the page corresponding to this parameter will be placed at the first index in the output results. The default value is `0`.
     /// - Returns:
     ///     Return an Array representing all possible search results. If the Array is empty, it means that no results were found.
-    public func displayQuery(fileName: String, line: Int, column: Int, pageHint: Int = 0 ) -> [NodeDisplayInfo] {
-        synctex_scanner_reset_result(self.scanner)
-        defer {
-            synctex_scanner_reset_result(self.scanner)
-        }
-        var isFileNameFound = false
-        var inputNode = synctex_scanner_input(self.scanner)
-        var resultURL: URL?
-        var resultName: String = .init()
-        while (inputNode != nil) {
-            guard let name = synctex_scanner_get_name(self.scanner, synctex_node_tag(inputNode)), let nameString = String(cString: name, encoding: .utf8) else {
-                return []
+    public func displayQuery(fileName: String, line: Int, column: Int, pageHint: Int = 0 ) async -> [NodeDisplayInfo] {
+        return await withUnsafeContinuation { (cont: UnsafeContinuation<[NodeDisplayInfo], Never>) -> Void in
+            queue.async {
+                synctex_scanner_reset_result(self.scanner)
+                defer {
+                    synctex_scanner_reset_result(self.scanner)
+                }
+                var isFileNameFound = false
+                var inputNode = synctex_scanner_input(self.scanner)
+                var resultURL: URL?
+                var resultName: String = .init()
+                while (inputNode != nil) {
+                    guard let name = synctex_scanner_get_name(self.scanner, synctex_node_tag(inputNode)), let nameString = String(cString: name, encoding: .utf8) else {
+                        cont.resume(returning: [])
+                        return
+                    }
+                    resultName = nameString /// Maybe contains `/./`
+                    resultURL = URL(fileURLWithFileSystemRepresentation: name, isDirectory: false, relativeTo: nil)
+                        .standardizedFileURL
+                    if resultName.hasSuffix(fileName) {
+                        isFileNameFound = true
+                        break
+                    }
+                    inputNode = synctex_node_sibling(inputNode)
+                }
+                guard isFileNameFound, let resultURL = resultURL else {
+#if DEBUG
+                    print("[SyncTeXSanner] Cannot find file \(fileName) in all input node. ")
+#endif
+                    cont.resume(returning: [])
+                    return
+                }
+                let queryResultCount = synctex_display_query(self.scanner, resultName, Int32(line), Int32(column), Int32(pageHint))
+                guard queryResultCount > 0 else {
+                    cont.resume(returning: [])
+                    return
+                }
+                var node: synctex_node_p?
+                var nodeResult = [synctex_node_p]()
+                while(true) {
+                    node = synctex_scanner_next_result(self.scanner)
+                    if let node = node {
+                        nodeResult.append(node)
+                    } else {
+                        break
+                    }
+                }
+                cont.resume(returning: nodeResult.map { self.getDisplayInfo(for: $0, fileURL: resultURL, line: line, column: column) })
+                return
             }
-            resultName = nameString /// Maybe contains `/./`
-            resultURL = URL(fileURLWithFileSystemRepresentation: name, isDirectory: false, relativeTo: nil)
-                .standardizedFileURL
-            if resultName.hasSuffix(fileName) {
-                isFileNameFound = true
-                break
-            }
-            inputNode = synctex_node_sibling(inputNode)
         }
-        guard isFileNameFound, let resultURL = resultURL else {
-            print("[SyncTeXSanner] Cannot find file \(fileName) in all input node. ")
-            return []
-        }
-        let queryResultCount = synctex_display_query(self.scanner, resultName, Int32(line), Int32(column), Int32(pageHint))
-        guard queryResultCount > 0 else {
-            return []
-        }
-        var node: synctex_node_p?
-        var nodeResult = [synctex_node_p]()
-        while(true) {
-            node = synctex_scanner_next_result(self.scanner)
-            if let node = node {
-                nodeResult.append(node)
-            } else {
-                break
-            }
-        }
-        return nodeResult.map { getDisplayInfo(for: $0, fileURL: resultURL, line: line, column: column) }
     }
     
     
@@ -211,24 +280,29 @@ public final class SyncTeXScanner {
     /// - Parameter page: The location being searched for is on page numbers in the output file. Let's assume that the page numbers start from `1`.
     /// - Parameter h: The horizontal position of the queried location in the coordinate system of the page page in the output file, with `72` dpi as the unit, is assumed to be measured from the origin located at the top left corner of the page.
     /// - Parameter v: The vertical position of the queried location in the coordinate system of the page page in the output file, with `72` dpi as the unit, is assumed to be measured from the origin located at the top left corner of the page.
-    public func editQuery(page: Int, h: CGFloat, v: CGFloat) -> [NodeEditInfo] {
-        synctex_scanner_reset_result(self.scanner)
-        let queryResultCount = synctex_edit_query(self.scanner, Int32(page), Float(h), Float(v))
-        guard queryResultCount > 0 else {
-            return []
-        }
-        var node: synctex_node_p?
-        var nodeResult = [synctex_node_p]()
-        while(true) {
-            node = synctex_scanner_next_result(self.scanner)
-            if let node = node {
-                nodeResult.append(node)
-            } else {
-                break
+    public func editQuery(page: Int, h: CGFloat, v: CGFloat) async -> [NodeEditInfo] {
+        return await withUnsafeContinuation { (cont: UnsafeContinuation<[NodeEditInfo], Never>) -> Void in
+            queue.async {
+                synctex_scanner_reset_result(self.scanner)
+                let queryResultCount = synctex_edit_query(self.scanner, Int32(page), Float(h), Float(v))
+                guard queryResultCount > 0 else {
+                    cont.resume(returning: [])
+                    return
+                }
+                var node: synctex_node_p?
+                var nodeResult = [synctex_node_p]()
+                while(true) {
+                    node = synctex_scanner_next_result(self.scanner)
+                    if let node = node {
+                        nodeResult.append(node)
+                    } else {
+                        break
+                    }
+                }
+                synctex_scanner_reset_result(self.scanner)
+                cont.resume(returning: nodeResult.map { self.getEditInfo(for: $0, page: page, h: h, v: v) })
             }
         }
-        synctex_scanner_reset_result(self.scanner)
-        return nodeResult.map { getEditInfo(for: $0, page: page, h: h, v: v) }
     }
     
     
